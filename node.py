@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_from_directory
 import uuid
 import threading
 import time
@@ -11,6 +11,8 @@ peers = set()
 
 bootstrap_url = os.environ.get("BOOTSTRAP_URL", "http://localhost:5000")
 my_address = os.environ.get("MY_ADDRESS", "http://localhost:5000")
+
+os.makedirs("storage", exist_ok=True)
 
 @app.route("/")
 def index():

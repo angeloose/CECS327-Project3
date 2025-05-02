@@ -39,6 +39,17 @@ def message():
     print(f"Received message from {sender}: {msg}", flush=True)
     return jsonify({"status": "received"})
 
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    file = request.files['file']
+    filepath = f"./storage/{file.filename}"
+    file.save(filepath)
+    return jsonify({"status": "uploaded", "filename": file.filename})
+
+@app.route('/download/<filename>', methods=['GET'])
+def download_file(filename):
+    return send_from_directory('./storage', filename)
+
 def register_with_bootstrap():
     try:
         res = requests.post(f"{bootstrap_url}/register", json={"peer": my_address})

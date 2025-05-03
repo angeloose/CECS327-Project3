@@ -105,6 +105,8 @@ def register_with_bootstrap():
         res = requests.post(f"{bootstrap_url}/register", json={"peer": my_address})
         if res.status_code == 200:
             peer_list = res.json().get("peers", [])
+            peer_list.append(bootstrap_url)  # ensure bootstrap is in list
+            peer_list.append(my_address)     # ensure self is in list
             peers.update(peer_list)
             peers.discard(my_address)
             print(f"Registered with bootstrap. Peers: {peers}")

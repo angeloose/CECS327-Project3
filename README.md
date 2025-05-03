@@ -53,3 +53,21 @@ Expected response: {"key":"fruit","value":"apple"}
 Query a key that doesn't exist:
 docker exec -it node4 curl http://node4:5000/kv/nonexistentkey
 Expected response: {"error":"Key not found"}
+
+### Phase 4: Peer Health Monitoring & Fault Tolerance
+
+Check if a node is alive:
+curl.exe http://localhost:5001/ping
+Expected response: {"status":"alive"}
+
+Check from another node: 
+docker exec -it node2 curl http://node5:5000/ping
+Expected response: {"status":"alive"}
+
+Simulate failure by stopping a node:
+docker stop node5
+
+Ping from another node: 
+docker exec -it node3 curl http://node5:5000/pin
+
+Expected response: curl: (6) Could not resolve host: node5

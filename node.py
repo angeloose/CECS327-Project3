@@ -96,6 +96,9 @@ def get_kv(key):
         return jsonify({"key": key, "value": value})
     return jsonify({"error": "Key not found"}), 404
 
+@app.route("/ping", methods=["GET"])
+def ping():
+    return jsonify({"status": "alive"})
 
 def register_with_bootstrap():
     try:
@@ -119,19 +122,30 @@ def update_peers():
         except Exception as e:
             print(f"Failed to update from bootstrap: {e}")
 
-        # Then get peers from known peers
+        # Ping and collect valid peers
+        alive_peers = set()
+        
         for peer in list(peers):
             try:
-                res = requests.get(f"{peer}/peers")
+                # First, try to get their peer list
+                res = requests.get(f"{peer}/peers", timeout=3)
                 if res.status_code == 200:
                     new_peers = res.json().get("peers", [])
                     peers.update(new_peers)
+                
+                # Then, ping to check liveness
+                ping_res = requests.get(f"{peer}/ping", timeout=3)
+                if ping_res.status_code == 200:
+                    alive_peers.add(peer)
             except Exception as e:
-                print(f"Failed to get peers from {peer}: {e}")
-        
-        # Ensure we don't keep our own address
+                print(f"Peer unreachable: {peer} - {e}")
+
+        # Refresh peers with only alive ones
+        peers.clear()
+        peers.update(alive_peers)
         peers.discard(my_address)
-        print(f"[{my_address}] Known peers: {peers}", flush=True)
+
+        print(f"[{my_address}] Known alive peers: {peers}", flush=True)
         time.sleep(10)
 
 def hash_key_to_node(key, peers_list):

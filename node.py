@@ -4,6 +4,7 @@ import threading
 import time
 import requests
 import os
+import hashlib
 
 app = Flask(__name__)
 node_id = str(uuid.uuid4())
@@ -13,7 +14,6 @@ bootstrap_url = os.environ.get("BOOTSTRAP_URL", "http://localhost:5000")
 my_address = os.environ.get("MY_ADDRESS", "http://localhost:5000")
 
 os.makedirs("storage", exist_ok=True)
-
 kv_store = {}
 
 @app.route("/")
@@ -58,13 +58,39 @@ def insert_kv():
     data = request.get_json()
     key = data.get("key")
     value = data.get("value")
-    if key and value:
-        kv_store[key] = value
-        return jsonify({"status": "stored", "key": key, "value": value})
-    return jsonify({"error": "Missing key or value"}), 400
+
+    if not key or not value:
+        return jsonify({"error": "Missing key or value"}), 400
+
+    all_peers = list(peers) + [my_address]
+    responsible_node = hash_key_to_node(key, all_peers)
+    print(f"[{my_address}] Responsible for key '{key}' → {responsible_node}", flush=True)
+
+    if responsible_node != my_address:
+        # Forward to the correct node
+        try:
+            res = requests.post(f"{responsible_node}/kv", json=data)
+            return res.json(), res.status_code
+        except Exception as e:
+            return jsonify({"error": f"Failed to forward: {str(e)}"}), 500
+
+    # Store locally
+    kv_store[key] = value
+    return jsonify({"status": "stored", "key": key, "value": value})
 
 @app.route("/kv/<key>", methods=["GET"])
 def get_kv(key):
+    all_peers = list(peers) + [my_address]
+    responsible_node = hash_key_to_node(key, all_peers)
+    print(f"[{my_address}] Responsible for key '{key}' → {responsible_node}", flush=True)
+
+    if responsible_node != my_address:
+        try:
+            res = requests.get(f"{responsible_node}/kv/{key}")
+            return res.json(), res.status_code
+        except Exception as e:
+            return jsonify({"error": f"Failed to forward: {str(e)}"}), 500
+
     value = kv_store.get(key)
     if value is not None:
         return jsonify({"key": key, "value": value})
@@ -84,16 +110,34 @@ def register_with_bootstrap():
 
 def update_peers():
     while True:
+        try:
+            # Get peers from bootstrap first
+            res = requests.get(f"{bootstrap_url}/peers")
+            if res.status_code == 200:
+                new_bootstrap_peers = res.json().get("peers", [])
+                peers.update(new_bootstrap_peers)
+        except Exception as e:
+            print(f"Failed to update from bootstrap: {e}")
+
+        # Then get peers from known peers
         for peer in list(peers):
             try:
                 res = requests.get(f"{peer}/peers")
                 if res.status_code == 200:
                     new_peers = res.json().get("peers", [])
                     peers.update(new_peers)
-                    peers.discard(my_address)
-            except:
-                continue
+            except Exception as e:
+                print(f"Failed to get peers from {peer}: {e}")
+        
+        # Ensure we don't keep our own address
+        peers.discard(my_address)
+        print(f"[{my_address}] Known peers: {peers}", flush=True)
         time.sleep(10)
+
+def hash_key_to_node(key, peers_list):
+    hashed = hashlib.sha1(key.encode()).hexdigest()
+    index = int(hashed, 16) % len(peers_list)
+    return sorted(peers_list)[index]
 
 if __name__ == "__main__":
 
